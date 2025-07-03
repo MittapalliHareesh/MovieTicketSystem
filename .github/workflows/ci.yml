@@ -1,4 +1,4 @@
-name: Java CI with Maven
+name: Java CI & CD
 
 on:
   push:
@@ -8,9 +8,7 @@ on:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v3
     - name: Set up JDK 17
@@ -28,3 +26,39 @@ jobs:
       with:
         name: jacoco-report
         path: target/site/jacoco
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    # Only run on pushes to the main branch
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      - name: Install Netlify CLI
+        run: npm install netlify-cli -g
+
+      - name: Deploy to Netlify
+        run: netlify deploy --prod --dir=movie-app-static --auth=${{ secrets.NETLIFY_AUTH_TOKEN }} --site=${{ secrets.NETLIFY_SITE_ID }}
+
+  notify_failure:
+    needs: build
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub Issue on Failure
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Build failed for commit: ${context.sha}`,
+              body: `The build for commit ${context.sha} failed. Please check the Actions tab for more details: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            })
